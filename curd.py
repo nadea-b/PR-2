@@ -38,13 +38,31 @@ def create_book():
     session.close()
     return jsonify({'message': 'Book created successfully!'}), 201
 
-# Read all books
+
+# Read all books with pagination
 @app.route('/books', methods=['GET'])
 def get_books():
     session = Session()
-    books = session.query(Book).all()
+
+    # Get 'offset' and 'limit' query parameters, with defaults if not provided
+    offset = request.args.get('offset', default=0, type=int)  # start from the 0th record by default
+    limit = request.args.get('limit', default=10, type=int)  # show 10 records by default
+
+    # Query with offset and limit for pagination
+    books = session.query(Book).offset(offset).limit(limit).all()
     session.close()
-    return jsonify([{'id': book.id, 'title': book.title, 'author': book.author, 'price': book.price, 'link': book.link} for book in books]), 200
+
+    # Format and return the JSON response
+    return jsonify([
+        {
+            'id': book.id,
+            'title': book.title,
+            'author': book.author,
+            'price': book.price,
+            'link': book.link
+        } for book in books
+    ]), 200
+
 
 # Read a specific book by query parameter ID
 @app.route('/book', methods=['GET'])
