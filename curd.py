@@ -1,9 +1,13 @@
+import os
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
+from werkzeug.utils import secure_filename
+import json
 
 # Create the base class for declarative models
 Base = declarative_base()
+
 
 # Define the Book model
 class Book(Base):
@@ -15,12 +19,31 @@ class Book(Base):
     price = Column(Float, nullable=False)
     link = Column(String, nullable=False)
 
+
 # Setup the database and session
 engine = create_engine('sqlite:///bookstore.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
+# Create Flask app
 app = Flask(__name__)
+
+# File upload configuration
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'json'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Ensure upload directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_file(filename):
+    """
+    Check if the uploaded file has an allowed extension
+    """
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # Create a new book
 @app.route('/books', methods=['POST'])
@@ -72,8 +95,10 @@ def get_book():
     book = session.query(Book).filter(Book.id == book_id).first()
     session.close()
     if book:
-        return jsonify({'id': book.id, 'title': book.title, 'author': book.author, 'price': book.price, 'link': book.link}), 200
+        return jsonify(
+            {'id': book.id, 'title': book.title, 'author': book.author, 'price': book.price, 'link': book.link}), 200
     return jsonify({'message': 'Book not found!'}), 404
+
 
 # Update a specific book by query parameter ID
 @app.route('/book', methods=['PUT'])
@@ -93,6 +118,7 @@ def update_book():
     session.close()
     return jsonify({'message': 'Book not found!'}), 404
 
+
 # Delete a specific book by query parameter ID
 @app.route('/book', methods=['DELETE'])
 def delete_book():
@@ -106,6 +132,72 @@ def delete_book():
         return jsonify({'message': 'Book deleted successfully!'}), 200
     session.close()
     return jsonify({'message': 'Book not found!'}), 404
+
+
+# New route for file upload
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    # Check if the post request has the file part
+    if 'file' not in request.files:
+        return jsonify({'message': 'No file part'}), 400
+
+    file = request.files['file']
+
+    # If user does not select file, browser also
+    # submit an empty part without filename
+    if file.filename == '':
+        return jsonify({'message': 'No selected file'}), 400
+
+    # Check if file is allowed
+    if file and allowed_file(file.filename):
+        # Secure the filename to prevent security risks
+        filename = secure_filename(file.filename)
+
+        # Full path to save the file
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        # Save the file
+        file.save(filepath)
+
+        # Try to parse the JSON file
+        try:
+            with open(filepath, 'r') as f:
+                json_data = json.load(f)
+
+            # Optional: Automatically create books from the uploaded JSON
+            session = Session()
+            try:
+                # Supports both single book and list of books
+                if isinstance(json_data, dict):
+                    json_data = [json_data]
+
+                for book_data in json_data:
+                    new_book = Book(
+                        title=book_data['title'],
+                        author=book_data['author'],
+                        price=book_data['price'],
+                        link=book_data['link']
+                    )
+                    session.add(new_book)
+
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                return jsonify({'message': f'Error creating books: {str(e)}'}), 400
+            finally:
+                session.close()
+
+            return jsonify({
+                'message': 'File uploaded and processed successfully',
+                'filename': filename,
+                'books_added': len(json_data)
+            }), 200
+
+        except json.JSONDecodeError:
+            return jsonify({'message': 'Invalid JSON file'}), 400
+
+    return jsonify({'message': 'File type not allowed'}), 400
+
 
 if __name__ == "__main__":
     app.run(debug=True)
