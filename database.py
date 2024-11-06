@@ -1,8 +1,9 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, inspect
-from sqlalchemy.orm import declarative_base  # Updated import path
+from sqlalchemy.orm import declarative_base
 
 # Create the base class for declarative models
 Base = declarative_base()
+
 
 # Define the Book model
 class Book(Base):
@@ -16,6 +17,7 @@ class Book(Base):
 
     def __repr__(self):
         return f"<Book(title='{self.title}', author='{self.author}', price={self.price}, link='{self.link}')>"
+
 
 # Create database and tables
 def setup_database():
