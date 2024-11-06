@@ -1,4 +1,7 @@
 import os
+import threading
+import asyncio
+import websockets
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -133,6 +136,46 @@ def delete_book():
     session.close()
     return jsonify({'message': 'Book not found!'}), 404
 
+# WebSocket Setup
+connected_users = {}
+
+async def chat_handler(websocket, path):
+    username = None
+    try:
+        while True:
+            message = await websocket.recv()
+            if message.startswith("join_room:"):
+                username = message[len("join_room:"):].strip()
+                connected_users[username] = websocket
+                print(f"{username} has joined the chat.")
+                for user, conn in connected_users.items():
+                    if user != username:
+                        await conn.send(f"{username} has joined the chat.")
+                await websocket.send(f"Welcome {username}!")
+                break
+
+        async for message in websocket:
+            if message == "leave_room":
+                connected_users.pop(username, None)
+                for user, conn in connected_users.items():
+                    await conn.send(f"{username} has left the chat.")
+                break
+            elif message.startswith("send_msg:"):
+                chat_message = message[len("send_msg:"):].strip()
+                for user, conn in connected_users.items():
+                    if user != username:
+                        await conn.send(f"{username}: {chat_message}")
+                await websocket.send(f"{username}: {chat_message}")
+    except websockets.ConnectionClosed:
+        if username:
+            connected_users.pop(username, None)
+
+
+def start_websocket_server():
+    server = websockets.serve(chat_handler, "localhost", 6789)
+    asyncio.get_event_loop().run_until_complete(server)
+    asyncio.get_event_loop().run_forever()
+
 
 # New route for file upload
 @app.route('/upload', methods=['POST'])
@@ -200,4 +243,12 @@ def upload_file():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # 1. version > Run Flask app in a separate thread
+    flask_thread = threading.Thread(target=app.run, kwargs={'debug': True, 'port': 5000})
+    flask_thread.start()
+
+    # 2. version > Run Flask app with threading enabled
+    # app.run(debug=True, port=5000, threaded=True)
+
+    # Run WebSocket server in the main thread
+    start_websocket_server()
