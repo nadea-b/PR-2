@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  app:
+    build: .  # It will look for a Dockerfile in the current folder
+    volumes:
+      - ./bookstore.db:/app/bookstore.db  # Mount the database file into the container
+    ports:
+      - "5000:5000"  # Expose the app on port 5000
+    environment:
+      - FLASK_APP=curd.py  # Point to your Flask app
+
+  db:
+    image: keinos/sqlite3  # SQLite database container (optional if using local file)
+    volumes:
+      - sqlite-data:/var/lib/sqlite  # Persist data in a named volume
+    environment:
+      - SQLITE_DATABASE=my_database
+      - SQLITE_USER=myuser
+      - SQLITE_PASSWORD=mypassword
+
+volumes:
+  sqlite-data:
