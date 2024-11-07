@@ -1,11 +1,10 @@
 import os
-import threading
 import asyncio
-import websockets
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.utils import secure_filename
+import websockets
 import json
 
 # Create the base class for declarative models
@@ -136,8 +135,10 @@ def delete_book():
     session.close()
     return jsonify({'message': 'Book not found!'}), 404
 
+
 # WebSocket Setup
 connected_users = {}
+
 
 async def chat_handler(websocket, path):
     username = None
@@ -171,10 +172,9 @@ async def chat_handler(websocket, path):
             connected_users.pop(username, None)
 
 
-def start_websocket_server():
-    server = websockets.serve(chat_handler, "localhost", 6789)
-    asyncio.get_event_loop().run_until_complete(server)
-    asyncio.get_event_loop().run_forever()
+async def start_websocket_server():
+    server = await websockets.serve(chat_handler, "localhost", 6789)
+    await server.wait_closed()
 
 
 # New route for file upload
@@ -241,14 +241,15 @@ def upload_file():
 
     return jsonify({'message': 'File type not allowed'}), 400
 
+# Run Flask app with asyncio-compatible server (like Hypercorn or aiohttp)
+def run_flask():
+    app.run(debug=True, port=5000, use_reloader=False)
+
+async def main():
+    await asyncio.gather(
+        start_websocket_server(),
+        asyncio.to_thread(run_flask)  # Running Flask app in a separate thread
+    )
 
 if __name__ == "__main__":
-    # 1. version > Run Flask app in a separate thread
-    flask_thread = threading.Thread(target=app.run, kwargs={'debug': True, 'port': 5000})
-    flask_thread.start()
-
-    # 2. version > Run Flask app with threading enabled
-    # app.run(debug=True, port=5000, threaded=True)
-
-    # Run WebSocket server in the main thread
-    start_websocket_server()
+    asyncio.run(main())
